@@ -1,0 +1,48 @@
+; size and prevsize must be less than 2^30
+
+struc header_t
+    .flags resq 1
+        ; bit 63    : state (FREE = 0, OCCUPIED = 1)
+        ; bit 32 - 62 : prevsize
+        ; bit 31 : reserved
+        ; bit 0 - 30  : size 
+endstruc
+
+%define STATE_MASK 0x80000000
+%define SIZE_MASK 0x7fffffff
+%define FREE 0x00000000
+%define OCCUPIED 0x80000000
+
+%macro header_get_flags 2
+    mov %1, qword [%2 - header_t_size + header_t.flags]
+%endmacro
+
+%macro header_get_size 2
+    movzx %1, dword [%2 - header_t_size + header_t.flags]
+    and %1, SIZE_MASK
+%endmacro
+
+%macro header_get_prevsize 2
+    movzx %1, dword [%2 - header_t_size + header_t.flags + 4]
+    and %1, SIZE_MASK
+%endmacro
+
+%macro header_get_state 2
+    header_get_flags %1, %2
+    shr %1, 32
+    and %1, STATE_MASK
+%endmacro
+
+; header_set_flags ptr, size, prevsize, state
+; destroys rax
+%macro header_set_flags 4
+    %ifidni %1, rax
+    %error "header_set_flags: the pointer can't be in register rax (the macro destroys rax)"
+    %endif
+    xor rax, rax
+    mov rax, %4
+    or rax, %3
+    shl rax, 32
+    add rax, %2
+    mov qword [%1 - header_t_size + header_t.flags], rax    
+%endmacro

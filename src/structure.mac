@@ -1,0 +1,91 @@
+; =============== list ===============
+
+struc list_t
+    .next resq 1
+endstruc
+
+; =============== list macros ===============
+
+; list_push_front list_ptr_reg, node
+%macro list_push_front 2
+    test %2, %2
+    jz %%skip
+    mov qword [%2 + list_t.next], %1
+%%skip:
+    mov %1, %2
+%endmacro
+
+; list_pop_front target_reg, list_ptr_reg
+%macro list_pop_front 2
+    mov %1, %2
+    test %2, %2
+    jz %%skip
+    mov %2, qword [%2 + list_t.next]
+%%skip:
+%endmacro
+
+; static_insert lst, node, ind
+; destroy rax
+; ind = 0 : insert in front
+; ind = n : insert after max index m s.t. m < n
+%macro static_list_insert 3
+    test %1, %1
+    jz %%new
+    %if %3 = 0
+        test %2, %2
+        jz %%new
+        mov [%2 + list_t.next], %1
+    %else
+        _static_insert_non_zero %1, %2, %3
+    %endif  
+    jmp %%done
+%%new:
+    mov %1, %2
+%%done:
+%endmacro
+
+; destroys rax
+%macro _static_insert_non_zero 3
+    %rep %3
+    mov rax, [%1 + list_t.next]
+    test rax, rax
+    jz .done
+    mov %1, [%1 + list_t.next]
+    %endrep
+%%insert:
+    test %2, %2
+    jz %%skip
+    mov rax, [%1 + list_t.next]
+    mov [%2 + list_t.next], rax
+%%skip:
+    mov [%1 + list_t.next], %2
+%endmacro
+
+
+; =============== tree ===============
+
+struc tree_t
+    .left resq 1
+    .right resq 1
+endstruc
+
+%macro tree_get_left 2
+    mov %1, qword [%2 + tree_t.left]
+%endmacro
+
+%macro tree_set_left 2
+    mov qword [%1 + tree_t.left], %2
+%endmacro
+
+%macro tree_get_right 2
+    mov %1, qword [%2 + tree_t.right]
+%endmacro
+
+%macro tree_set_right 2
+    mov qword [%1 + tree_t.right], %2
+%endmacro
+
+struc mem_tree_t
+    .by_size resb tree_t_size
+    .by_addr resb tree_t_size
+endstruc
