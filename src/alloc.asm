@@ -7,13 +7,15 @@ section .rodata
     %ifdef DEBUG
     init_report_fmt db "allocated new memory of size %llu", 10, "starting at %p", 10, "end at %p", 10, 0
     header_fmt db "%s : header=%llx prev_size = %d size = %d total %llu", 10, 0
-    free_report_fmt db "free ptr=%p size = %d total %llu", 10, 0
+    free_report_fmt db "free ptr=%p size = %d total %llu header=%16llx", 10, 0
+    split_fmt db "split ptr=%p size=%zu excess_ptr=%p size=%zu", 10, 0
 
     search_str db "search found ", 0
     bump_str db "bumped ", 0
     %endif
 
     mem_pool_size equ (1 << 30) ; 2^30 
+    init_alignment equ ((16 - (header_t_size % 16)) % 16)         ; header_t_size + init_alignment % 16 = 0
 
 section .bss
     tape resq 1
@@ -120,8 +122,15 @@ alloc:
     mov rax, 0
     jmp .return
 
-global free
-free:
+global release
+release:
+    header_get_flags rax, rdi
+    movzx rax, eax
+    mov ecx, dword [rel total_size]
+    sub ecx, eax
+    mov dword [rel total_size], ecx
+
+.skip_total_update:
     ; rbx := ptr to free
     push rbp
     mov rbp, rsp
@@ -133,23 +142,21 @@ free:
     and rax, rcx 
     mov qword [rbx - header_t_size], rax
     movzx rax, eax
-    mov ecx, dword [rel total_size]
-    sub ecx, eax
-    mov dword [rel total_size], ecx
     cmp rax, largest_bin
     ja .large
 
+    xor rdx, rdx
     mov rcx, 16
     div rcx 
     dec rax                     ; rax := index = size / 16 - 1
     cmp rax, 255
     jae .large
 
-    lea rcx, [rel  free_list]
+    lea rcx, [rel free_list]
     lea rcx, [rcx + rax * 8]    ; rcx := &free_list[rax]
     mov rax, qword [rcx]        ; rax := *rcx = free_list[rax]
-    list_push_front rax, rbx
-    mov qword [rcx], rax        ; *rcx = rdi
+    mov qword [rbx + list_t.next], rax
+    mov qword [rcx], rbx        ; *rcx = rdi
     jmp .then
     
 .large:
@@ -170,9 +177,10 @@ free:
 
 .then:
     %ifdef DEBUG
-    mov rsi, rdi
-    header_get_size rdx, rdi
+    mov rsi, rbx
+    header_get_size rdx, rbx
     movzx rcx, dword [rel total_size]
+    header_get_flags r8, rbx
     lea rdi, [rel free_report_fmt]
     xor eax, eax
     libcall printf
@@ -185,7 +193,126 @@ free:
 ; ==================== internal ====================
 
 search_fit:
-    xor rax, rax
+    ; rbx := size, r15 := allocated ptr
+    push rbp
+    mov rbp, rsp
+    push rbx
+    mov rbx, rdi
+    push r15
+    xor r15, r15
+
+    ; check size
+    cmp rbx, largest_bin
+    ja .from_trees
+
+    ; from list
+    xor rdx, rdx
+    mov rax, rbx
+    mov rcx, 16
+    div rcx
+    dec rax
+.list_loop:
+    cmp rax, bin_count
+    jae .from_trees
+    lea rcx, [rel free_list]
+    lea rcx, [rcx + rax * 8]    ; rcx = &free_list[rax]
+    mov rdi, qword [rcx]        ; rdi = free_list[rax]
+    inc rax
+    test rdi, rdi
+    jz .list_loop
+
+    mov r15, rdi
+    mov rdi, qword [rdi + list_t.next]
+    mov qword [rcx], rdi        ; *rcx = rdi = cons(rdi)
+    jmp .ststate
+
+    ; from trees
+.from_trees:
+    ; search size
+    mov rdi, qword [rel free_large.by_size]
+    mov rsi, rbx
+    lea rdx, [rel cmp_with_size]
+    call tree_traverse
+    mov r15, rax
+    test r15, r15
+    jz .return
+
+    ; remove from tree.by_size
+    mov rdi, qword [rel free_large.by_size]
+    mov rsi, r15
+    lea rdx, [rel cmp_by_size]
+    call tree_del
+    mov qword [rel free_large.by_size], rax
+
+    ; remove from tree.by_addr
+    mov rdi, qword [rel free_large.by_addr]
+    mov rsi, r15
+    lea rdx, [rel cmp_by_addr]
+    call tree_del
+    mov qword [rel free_large.by_addr], rax
+
+.ststate:
+    ; set occupied
+    ; occupied must be set before split to avoid endless recursion after freeing 
+    header_get_flags rdi, r15
+    mov rcx, 0x80000000
+    shl rcx, 32
+    or rdi, rcx
+    header_set_flags r15, rdi
+
+.split:
+    movzx rdi, edi            ; rdi := old block size
+    mov rcx, rdi
+    sub rcx, rbx            ; rcx := excess block size            
+    cmp rcx, 16 
+    jb .no_split
+    
+    ; split
+    ;   - keep rbx
+    ;   - reset excess header flags
+    ;   - free the excess payload
+
+    %ifdef DEBUG
+    push rcx
+    sub rsp, 8
+    lea rdi, [rel split_fmt]
+    mov rsi, r15
+    mov rdx, rbx
+    mov r8, rcx
+    lea rcx, [r15 + rbx]
+    xor eax, eax
+    libcall printf
+    add rsp, 8
+    pop rcx
+    %endif
+
+    lea rdi, [r15 + rbx]            ; rdi := excess block payload    
+    header_set_flags rdi, rcx, rbx, FREE
+    call release.skip_total_update
+
+    jmp .update_header
+.no_split:
+    mov rbx, rdi            ; rbx := old block size
+    ; update header
+.update_header:
+    header_get_flags rdi, r15
+    ; set size
+    mov rcx, 0xffffffff
+    shl rcx, 32
+    and rdi, rcx
+    add rdi, rbx
+    header_set_flags r15, rdi
+
+    mov ecx, dword [rel total_size]
+    add ecx, ebx
+    mov dword [rel total_size], ecx
+
+    ; return
+.return:
+    mov rax, r15
+    pop r15
+    pop rbx
+    leave
     ret
 
 ; ==================== init/fini ====================
@@ -203,14 +330,16 @@ init_alloc:
     test rax, rax
     jz .terminate
     mov qword [rel tape], rax
-    mov qword [rel brk], rax
-    add rax, mem_pool_size
     mov qword [rel end], rax
+    add qword [rel end], mem_pool_size
+    mov qword [rel brk], rax
+    add qword [rel brk], init_alignment
     %ifdef DEBUG
     lea rdi, [rel init_report_fmt]
     mov rsi, mem_pool_size
     mov rdx, qword [rel tape]
     mov rcx, qword [rel end]
+    xor eax, eax
     libcall printf
     %endif
     ret

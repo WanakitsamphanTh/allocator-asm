@@ -107,18 +107,18 @@ tree_del:
     tree_get_right rdx, rbx
     xor rax, rax
     test rcx, rcx
-    setnz al         ; al := left == NULL
+    setnz al         ; al := left != NULL
     test rdx, rdx
-    setnz bl         ; bl := right == NULL
-    shl bl, 1
-    or al, bl       ; al[0] = left == NULL, al[1] = right == NULL
+    setnz sil         ; bl := right != NULL
+    shl sil, 1
+    or al, sil       ; al[0] = left != NULL, al[1] = right != NULL
     jmp qword [tree_del_table + rax]
 
     ; rcx = left, rdx = right
-.c_1:
+.c_1:   ; 00
     mov rax, 0
     jmp .return
-.c_2:
+.c_2:   ; 01
     mov rdi, rcx
     mov rsi, r12
     mov rdx, r13
@@ -126,7 +126,7 @@ tree_del:
     tree_set_left rbx, rax
     mov rax, rbx
     jmp .return
-.c_3:
+.c_3:   ;10
     mov rdi, rdx
     mov rsi, r12
     mov rdx, r13
@@ -134,10 +134,30 @@ tree_del:
     tree_set_right rbx, rax
     mov rax, rbx
     jmp .return
-.c_4:
+.c_4:   ;11
     ; to do
-    jmp .return
+    tree_get_left rdi, rbx  ; rdi := inorder predecessor
+    xor rsi, rsi ; rsi := inorder predecessor's parent
+.c_4loop:
+    tree_get_right rcx, rdi
+    test rcx, rcx
+    jz .c_4done
+    mov rsi, rdi
+    mov rdi, rcx
+    jmp .c_4loop
 
+.c_4done:
+    test rdi, rdi
+    jnz .c_4skip
+    tree_get_left rcx, rdi
+    tree_set_right rsi, rcx
+.c_4skip:    
+    tree_get_right rcx, rbx
+    tree_set_right rsi, rcx
+    tree_set_left rbx, 0
+    tree_set_right rbx, 0
+    mov rax, rdi
+    jmp .return
 .del_left:
     tree_get_left rdi, rbx
     mov rsi, r12
@@ -194,10 +214,10 @@ tree_traverse:
     leave
     ret
 .l:
-    tree_get_left rbx
+    tree_get_left rbx, rbx
     jmp .1
 .r:
-    tree_get_right rbx
+    tree_get_right rbx, rbx
     jmp .1
 
 %macro inlined_tree_init 1

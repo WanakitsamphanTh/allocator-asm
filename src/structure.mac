@@ -6,6 +6,7 @@ endstruc
 
 ; =============== list macros ===============
 
+
 ; list_push_front list_ptr_reg, node
 %macro list_push_front 2
     test %2, %2

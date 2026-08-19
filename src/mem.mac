@@ -34,15 +34,26 @@ endstruc
 %endmacro
 
 ; header_set_flags ptr, size, prevsize, state
+; | header_set_flags ptr, flags
 ; destroys rax
-%macro header_set_flags 4
+%macro header_set_flags 2-4
     %ifidni %1, rax
-    %error "header_set_flags: the pointer can't be in register rax (the macro destroys rax)"
+        %error "header_set_flags: the pointer can't be in register rax (the macro destroys rax)"
     %endif
-    xor rax, rax
-    mov rax, %4
-    or rax, %3
-    shl rax, 32
-    add rax, %2
-    mov qword [%1 - header_t_size + header_t.flags], rax    
+    %if %0 > 2
+            %if %0 = 4
+            xor rax, rax
+            mov rax, %4
+            or rax, %3
+            shl rax, 32
+            add rax, %2
+            mov qword [%1 - header_t_size + header_t.flags], rax
+        %else
+            %error "header_set_flags: invalid number of arguments"
+        %endif
+    %elif %0 = 2
+        mov qword [%1 - header_t_size + header_t.flags], %2
+    %else 
+        %error "header_set_flags: invalid number of arguments"
+    %endif
 %endmacro

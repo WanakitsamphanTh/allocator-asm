@@ -5,12 +5,3 @@
 %macro container_of 3
     lea %1, [%2 - %3]
 %endmacro
-
-%macro fnret 1-*
-    %rep %0
-        pop %1
-        %rotate 1
-    %endrep
-    leave
-    ret
-%endmacro

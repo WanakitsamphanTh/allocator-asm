@@ -8,14 +8,14 @@
     **Searching (Coalescing)** \
     ***average:*** pop from the first element in a list `O(N)`
 
-- [ ] manage free large memory blocks with duplicated trees (one by size and another by address) ***※currently***
-    - [ ] simple binary search trees ***※currently*** \
+- [X] manage free large memory blocks with duplicated trees (one by size and another by address)
+    - [X] simple binary search trees \
         **Searching** \
         ***average:*** freed memory blocks are well distributed `O(log N)` \
         ***worst case:*** highly unbalanced `O(N)`
     - [ ] self-balancing binary search trees
-- [ ] block splitting
-- [ ] coalescing
+- [x] block splitting 
+- [ ] coalescing ***※currently*** 
 
 ## allocator alogorithm
 ```python
