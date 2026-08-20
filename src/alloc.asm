@@ -6,8 +6,8 @@ section .rodata
     
     %ifdef DEBUG
     init_report_fmt db "allocated new memory of size %llu", 10, "starting at %p", 10, "end at %p", 10, 0
-    header_fmt db "%s : header=%llx prev_size = %d size = %d total %llu", 10, 0
-    free_report_fmt db "free ptr=%p size = %d total %llu header=%16llx", 10, 0
+    header_fmt db "%s : header=%016llx prev_size = %d size = %d total %llu", 10, 0
+    free_report_fmt db "free ptr=%p size = %d total %llu header=%016llx", 10, 0
     split_fmt db "split ptr=%p size=%zu excess_ptr=%p size=%zu", 10, 0
 
     search_str db "search found ", 0
