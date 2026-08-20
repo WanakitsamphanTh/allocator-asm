@@ -6,11 +6,11 @@
     ***average:*** pop from the first element in a list `O(1)` or `O(k)` \
     where `k` be the number of bins \
     **Searching (Coalescing)** \
-    ***average:*** pop from the first element in a list `O(N)`
+    ***average:*** linear search for the address `O(N)`
 
 - [X] manage free large memory blocks with duplicated trees (one by size and another by address)
     - [X] simple binary search trees \
-        **Searching** \
+        **Searching/Insert/Delete** \
         ***average:*** freed memory blocks are well distributed `O(log N)` \
         ***worst case:*** highly unbalanced `O(N)`
     - [ ] self-balancing binary search trees
@@ -40,7 +40,7 @@ def alloc(size: i32) -> pointer :
     total = total + size
     return ptr
 
-def free(ptr: pointer):
+def release(ptr: pointer):
     ptr.header.status = FREE
 
     # try to coalesce
@@ -87,11 +87,21 @@ def search_fit(size: i32) -> pointer:
     if ptr is None:
         return None
 
-    # update header
-    setheader(ptr,size)
+    # set occupied
+    # avoid infinite loop when coalescing
+    setoccupied(ptr + size)
 
     # split if possible
-    # TODO
+    excess_size = ptr.header.size - size
+    if excess_size >=:
+        next_ptr = ptr + excess_size
+        setheader(next_ptr)
+        release(next_ptr)
+    else:
+        size = ptr.header.size
+
+    # update header
+    setheader(ptr,size)
     
     total = total + size
     return ptr
